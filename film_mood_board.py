@@ -1,5 +1,5 @@
 ## -----------------------------------------------------------------------------
-## film_mood_board_enhanced.py
+## film_mood_board_final.py
 ## -----------------------------------------------------------------------------
 import streamlit as st
 import requests
@@ -9,8 +9,8 @@ from io import BytesIO
 # ---- PAGE CONFIG ----
 # Set the page configuration. This should be the first Streamlit command.
 st.set_page_config(
-    page_title="🎬 Paige's Mood Board", # <-- Updated title
-    page_icon="🎨", # <-- Updated icon
+    page_title="🎬 Film Mood Board",
+    page_icon="🎥",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -27,7 +27,7 @@ try:
     API_KEY = st.secrets["API_KEY"]
 except (KeyError, FileNotFoundError):
     st.error("🚨 API_KEY not found! Please add it to your Streamlit secrets.")
-    st.stop()
+    st.stop() # Stop the app if the key is missing
 
 # ---- STATE MANAGEMENT ----
 # Initialize session state for favorites and movie data to prevent re-fetching
@@ -44,7 +44,7 @@ def search_movie(query):
     params = {"api_key": API_KEY, "query": query, "language": "en-US"}
     try:
         response = requests.get(search_url, params=params)
-        response.raise_for_status()
+        response.raise_for_status() # Checks for HTTP errors (like 401, 404)
         results = response.json().get("results", [])
         return results[0] if results else None
     except requests.exceptions.RequestException as e:
@@ -65,41 +65,38 @@ def get_movie_details(movie_id):
 
 def display_favorites():
     """Renders the list of favorite movies in the sidebar."""
-    st.sidebar.title("❤️ Paige's Favorite Films") # <-- Updated title
+    st.sidebar.title("❤️ Favorite Films")
     if not st.session_state.favorites:
         st.sidebar.info("Your favorite movies will appear here. Add some!")
     else:
-        for fav_title in st.session_state.favorites:
+        # Create a copy for safe iteration while removing items
+        for fav_title in st.session_state.favorites[:]:
             if st.sidebar.button(f"🗑️ {fav_title}", key=f"fav_{fav_title}"):
                 st.session_state.favorites.remove(fav_title)
-                st.experimental_rerun()
+                st.experimental_rerun() # Rerun the app to update the list instantly
 
 # ---- MAIN APP LAYOUT ----
 
-# --- BANNER --- ## <-- NEW
-# Make sure you have the banner image saved as 'banner.png' in the same folder
-try:
-    st.image("banner.png", use_container_width=True)
-except FileNotFoundError:
-    st.title("🎨 Paige's Mood Board") # Fallback to title if image not found
-
+st.title("🎬 Film Mood Board")
 st.write("Discover everything about your favorite films. Search for a movie to get started.")
 
 # --- SIDEBAR ---
 display_favorites()
 
 # --- SEARCH BAR ---
-movie_query = st.text_input("Enter a movie title", placeholder="e.g., La La Land")
+movie_query = st.text_input("Enter a movie title", placeholder="e.g., Blade Runner 2049")
 
 if movie_query:
-    with st.spinner('Searching for your movie...'):
+    with st.spinner('Searching for your movie...'): # Loading spinner for better UX
         movie_result = search_movie(movie_query)
 
     if movie_result:
         # Fetch all details in one go
-        st.session_state.current_movie = get_movie_details(movie_result["id"])
+        with st.spinner('Gathering all the details...'):
+            st.session_state.current_movie = get_movie_details(movie_result["id"])
     else:
         st.error("No results found. Try a different title!")
+        st.session_state.current_movie = None # Clear previous results
 
 # --- DISPLAY MOVIE DETAILS ---
 if st.session_state.current_movie:
@@ -112,6 +109,7 @@ if st.session_state.current_movie:
         if movie.get("poster_path"):
             st.image(POSTER_BASE_URL + movie["poster_path"], use_container_width=True)
         else:
+            # Placeholder for missing posters
             st.image("https://via.placeholder.com/500x750.png?text=No+Poster", use_container_width=True)
             
     with col2:
@@ -128,7 +126,7 @@ if st.session_state.current_movie:
         
         # --- TAGLINE & OVERVIEW ---
         if movie.get("tagline"):
-            st.markdown(f"> *{movie.get('tagline')}*")
+            st.markdown(f"> *{movie.get('tagline')}*") # Stylish tagline display
         st.write(movie.get("overview", "No overview available."))
         
         # --- FAVORITE BUTTON LOGIC ---
@@ -143,13 +141,13 @@ if st.session_state.current_movie:
                 st.success(f"Added {movie_title} to favorites!")
             st.experimental_rerun()
 
-    st.markdown("---")
+    st.markdown("---") # Visual separator
 
     # --- TABS FOR DETAILS ---
     tab1, tab2, tab3, tab4 = st.tabs(["🎥 Trailer", "👨‍👩‍👧‍👦 Cast & Crew", "📸 Stills", "🎯 Similar Movies"])
 
     with tab1:
-        st.subheader("🎥 Watch Trailer")
+        st.subheader("Watch Trailer")
         videos = movie.get("videos", {}).get("results", [])
         trailer = next((v for v in videos if v["type"] == "Trailer" and v["site"] == "YouTube"), None)
         if trailer:
@@ -158,35 +156,37 @@ if st.session_state.current_movie:
             st.info("No trailer available for this movie.")
 
     with tab2:
-        st.subheader("👨‍👩‍👧‍👦 Top Billed Cast")
+        st.subheader("Top Billed Cast")
         credits = movie.get("credits", {})
         cast = credits.get("cast", [])
         if cast:
             cols = st.columns(5)
-            for idx, person in enumerate(cast[:10]):
-                if person.get("profile_path"):
-                    cols[idx % 5].image(IMAGE_BASE_URL + person["profile_path"])
-                    cols[idx % 5].write(f"**{person['name']}**")
-                    cols[idx % 5].caption(f"as {person['character']}")
+            for idx, person in enumerate(cast[:10]): # Display top 10 actors
+                with cols[idx % 5]:
+                    if person.get("profile_path"):
+                        st.image(IMAGE_BASE_URL + person["profile_path"])
+                        st.write(f"**{person['name']}**")
+                        st.caption(f"as {person['character']}")
         else:
             st.info("Cast information not available.")
 
     with tab3:
-        st.subheader("📸 Movie Stills")
+        st.subheader("Movie Stills")
         backdrops = movie.get("images", {}).get("backdrops", [])
         if backdrops:
-            st.image([IMAGE_BASE_URL + img["file_path"] for img in backdrops[:9]], width=250)
+            # Use Streamlit's built-in image carousel feature
+            st.image([POSTER_BASE_URL + img["file_path"] for img in backdrops[:9]], width=250)
         else:
             st.info("No stills available for this movie.")
             
     with tab4:
-        st.subheader("🎯 Similar Movies You Might Like")
+        st.subheader("Similar Movies You Might Like")
         similar_movies = movie.get("similar", {}).get("results", [])
         if similar_movies:
             cols = st.columns(4)
             for idx, smovie in enumerate(similar_movies[:8]):
-                if smovie.get("poster_path"):
-                    with cols[idx % 4]:
+                with cols[idx % 4]:
+                    if smovie.get("poster_path"):
                         st.image(IMAGE_BASE_URL + smovie["poster_path"], use_container_width=True, caption=smovie["title"])
         else:
             st.info("Couldn't find any similar movies.")
